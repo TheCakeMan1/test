@@ -247,6 +247,163 @@ def logout():
     session.clear()
     return redirect(url_for("index"))
 
+from flask import jsonify
+
+@app.route("/sqli_api", methods=["GET", "POST"])
+def sqli_api():
+    result = ""
+
+    if request.method == "POST":
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+            username = data.get("username", "")
+            password = data.get("password", "")
+        else:
+            username = request.form.get("username", "")
+            password = request.form.get("password", "")
+
+        query = f"SELECT id, username, email, role FROM users WHERE username = '{username}' AND password = '{password}'"
+
+        conn = get_conn()
+        try:
+            rows = conn.execute(query).fetchall()
+        except Exception as e:
+            conn.close()
+
+            if request.is_json:
+                return jsonify({
+                    "ok": False,
+                    "error": str(e)
+                }), 400
+
+            result = f"<div class='error'>{escape(str(e))}</div>"
+            rows = []
+
+        else:
+            conn.close()
+
+        users = [
+            {
+                "id": row["id"],
+                "username": row["username"],
+                "email": row["email"],
+                "role": row["role"],
+            }
+            for row in rows
+        ]
+
+        flag = FLAGS["sqli"] if users else None
+
+        if request.is_json:
+            return jsonify({
+                "ok": True,
+                "count": len(users),
+                "users": users,
+                "flag": flag
+            })
+
+        if users:
+            result = "<div class='ok'>Records found</div>"
+            result += f"<div class='flag'>{flag}</div>"
+            result += "<pre>" + escape(str(users)) + "</pre>"
+        else:
+            result = "<div class='error'>No records found</div>"
+
+    html = f"""
+    <!doctype html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Corporate Login</title>
+        <style>
+            body {{
+                margin: 0;
+                font-family: Tahoma, Arial, sans-serif;
+                background: linear-gradient(#e8eef7, #d6deea);
+            }}
+            .wrap {{
+                width: 420px;
+                margin: 70px auto;
+                background: #fff;
+                border: 1px solid #b9c7d8;
+                box-shadow: 0 2px 8px rgba(0,0,0,.12);
+            }}
+            .head {{
+                background: #2d5d8b;
+                color: white;
+                padding: 16px 20px;
+                font-size: 22px;
+            }}
+            .content {{
+                padding: 22px;
+            }}
+            label {{
+                display: block;
+                margin-bottom: 6px;
+                color: #374151;
+                font-size: 14px;
+            }}
+            input {{
+                width: 100%;
+                padding: 9px;
+                margin-bottom: 14px;
+                border: 1px solid #aebccc;
+            }}
+            button {{
+                background: #2d5d8b;
+                color: white;
+                border: none;
+                padding: 10px 14px;
+                cursor: pointer;
+            }}
+            .error {{
+                margin-top: 12px;
+                color: #b91c1c;
+            }}
+            .ok {{
+                margin-top: 12px;
+                color: #166534;
+            }}
+            .flag {{
+                margin-top: 12px;
+                padding: 10px;
+                background: #ecfdf5;
+                border: 1px solid #16a34a;
+                color: #166534;
+            }}
+            .links {{
+                margin-top: 18px;
+                font-size: 12px;
+                color: #6b7280;
+            }}
+            a {{
+                color: #2d5d8b;
+                text-decoration: none;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <div class="head">Company Secure Login</div>
+            <div class="content">
+                <form method="post">
+                    <label>User name</label>
+                    <input name="username">
+                    <label>Password</label>
+                    <input name="password" type="password">
+                    <button type="submit">Sign in</button>
+                </form>
+                {result}
+                <div class="links">
+                    <a href="#">Forgot password?</a> · <a href="#">Help desk</a>
+                </div>
+                {nav_block()}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(html)
 
 @app.route("/sqli", methods=["GET", "POST"])
 def sqli_login():
